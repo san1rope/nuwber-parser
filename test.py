@@ -21,8 +21,12 @@ async def main():
     ext_path = os.path.abspath("proxy_extension_test")
     options.add_argument(f"--load-extension={ext_path}")
 
+    test_address = "1133 E 60th St  90001"
+    url_address = "https://nuwber.com/search/address?addressQuery=" + "%20".join(test_address.split())
+    print(f"url_address = {url_address}")
+
     with Chrome(options=options) as driver:
-        driver.get("https://nuwber.com/address")
+        driver.get(url_address)
 
         input("ad")
 
@@ -30,14 +34,15 @@ async def main():
 
 
 async def main2():
-    url = "https://nuwber.com"
+    url = "https://habr.com/ru/companies/simbirsoft/articles/598407/"
+    proxy = "http://54.38.92.93:10000"
 
-    proxy = "http://138.36.94.19:59100"
-    proxy_auth = BasicAuth(login="valetinles", password="f5bay87SBb")
     async with ClientSession() as session:
-        async with session.get(url=url, timeout=10) as response:
-            with open("index.html", "w", encoding="utf-8") as file:
-                file.write(await response.text())
+        async with session.get(url=url, proxy=proxy, timeout=10, ssl=False) as response:
+            markup = await response.text()
+
+    with open("index.html", "w", encoding="utf-8") as file:
+        file.write(markup)
 
 
 if __name__ == "__main__":

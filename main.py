@@ -8,7 +8,6 @@ from typing import Dict, Optional, List
 from config import Config
 from models import Proxy
 from parser import Parser
-from utils import Utils as Ut
 
 logger = logging.getLogger(__name__)
 
@@ -34,17 +33,27 @@ def main():
 
     proxies_list: List[Proxy] = []
     for proxy in content_proxies.split("\n"):
-        try:
-            login, password, host, port = proxy.split(":")
-            proxy = Proxy(host=host, port=port, username=login, password=password)
-            proxies_list.append(proxy)
-
-        except ValueError:
+        char_count = proxy.count(":")
+        if char_count not in [1, 3]:
             logger.warning(f"Неверный формат прокси: {proxy}! Пропускаю его.")
+            continue
 
-    processes_count = 0  # math.ceil(len(proxies_list) / 2)
-    values_per_process = 0  # math.ceil(len(in_data) / processes_count)
-    queues_list = [Queue() for _ in range(processes_count)]
+        if char_count == 1:
+            host, port = proxy.split(":")
+            login, password = None, None
+
+        else:
+            login, password, host, port = proxy.split(":")
+
+        proxy = Proxy(host=host, port=port, username=login, password=password)
+        proxies_list.append(proxy)
+
+    if len(proxies_list) < Config.PROCESSES_COUNT:
+        logger.error("Не хватает прокси на все процессы! Завершаю работу...")
+        return
+
+    values_per_process = math.ceil(len(in_data) / Config.PROCESSES_COUNT)
+    queues_list = [Queue() for _ in range(Config.PROCESSES_COUNT)]
     last_index = 0
     for queue in queues_list:
         Process(target=Parser, args=(queue, in_data[last_index:last_index + values_per_process])).start()
