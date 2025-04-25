@@ -19,9 +19,6 @@ class Proxy(BaseModel):
         return name
 
     def create_proxy_extension(self):
-        path = Path(os.path.abspath("proxy-extensions/" + self.formulate_filename()))
-        path.touch(exist_ok=True)
-
         manifest_json = """
             {
               "manifest_version": 3,
@@ -53,8 +50,8 @@ class Proxy(BaseModel):
                     rules: {
                       singleProxy: {
                         scheme: "http",
-                        host: "138.36.94.19",
-                        port: 59100
+                        host: "%s",
+                        port: parseInt(%s)
                       },
                       bypassList: ["localhost"]
                     }
@@ -69,8 +66,8 @@ class Proxy(BaseModel):
               function(details, callback) {
                 callback({
                   authCredentials: {
-                    username: "valetinles",
-                    password: "f5bay87SBb"
+                    username: "%s",
+                    password: "%s"
                   }
                 });
               },
@@ -79,7 +76,13 @@ class Proxy(BaseModel):
             );
             """ % (self.host, self.port, self.username, self.password)
 
-        with open(path + "/manifest.json", 'w') as m_file:
-            m_file.write(manifest_json)
-        with open(path + "/background.js", 'w') as b_file:
-            b_file.write(background_js)
+        manifest_path = Path(os.path.abspath("proxy_extensions/" + self.formulate_filename() + "/manifest.json"))
+        background_path = Path(os.path.abspath("proxy_extensions/" + self.formulate_filename() + "/background.js"))
+
+        manifest_path.parent.mkdir(exist_ok=True, parents=True)
+        manifest_path.touch(exist_ok=True)
+        manifest_path.write_text(manifest_json)
+
+        background_path.parent.mkdir(exist_ok=True, parents=True)
+        background_path.touch(exist_ok=True)
+        background_path.write_text(background_js)

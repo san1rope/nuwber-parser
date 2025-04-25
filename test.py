@@ -1,8 +1,7 @@
-import asyncio
 import logging
 import os
+import time
 
-from aiohttp import ClientSession, BasicAuth
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
@@ -13,7 +12,7 @@ from undetected_chromedriver import ChromeOptions, Chrome
 logger = logging.getLogger(__name__)
 
 
-async def main():
+def main():
     logging.basicConfig(level=logging.INFO,
                         format=u'%(filename)s:%(lineno)d #%(levelname)-8s [%(asctime)s] - %(name)s - %(message)s')
 
@@ -26,24 +25,42 @@ async def main():
     print(f"url_address = {url_address}")
 
     with Chrome(options=options) as driver:
+        driver.set_window_size(width=800, height=600)
         driver.get(url_address)
 
-        input("ad")
+        time.sleep(15)
 
-        await asyncio.sleep(1000)
+        # actions = ActionChains(driver)
 
+        # driver.execute_script(f"""
+        #     var el = document.createElement('div');
+        #     el.style.position = 'absolute';
+        #     el.style.left = '{265}px';
+        #     el.style.top = '{100}px';
+        #     el.style.width = '10px';
+        #     el.style.height = '10px';
+        #     el.style.background = 'red';
+        #     el.style.zIndex = 9999;
+        #     document.body.appendChild(el);
+        # """)
 
-async def main2():
-    url = "https://habr.com/ru/companies/simbirsoft/articles/598407/"
-    proxy = "http://54.38.92.93:10000"
+        x, y = 265, 100
 
-    async with ClientSession() as session:
-        async with session.get(url=url, proxy=proxy, timeout=10, ssl=False) as response:
-            markup = await response.text()
+        actions = ActionChains(driver)
+        actions.move_by_offset(5, 5).perform()
+        time.sleep(0.2)
+        actions.move_by_offset(10, -3).perform()
+        time.sleep(0.3)
+        actions.move_by_offset(20, 4).perform()
+        time.sleep(0.3)
+        actions.move_by_offset(x, y).click().perform()
+        actions.move_by_offset(-x - 35, -6).perform()
 
-    with open("index.html", "w", encoding="utf-8") as file:
-        file.write(markup)
+        # actions.move_by_offset(xoffset=265, yoffset=100).perform()
+        # actions.click().perform()
+
+        time.sleep(1000)
 
 
 if __name__ == "__main__":
-    asyncio.run(main2())
+    main()

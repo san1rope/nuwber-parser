@@ -46,6 +46,7 @@ def main():
             login, password, host, port = proxy.split(":")
 
         proxy = Proxy(host=host, port=port, username=login, password=password)
+        proxy.create_proxy_extension()
         proxies_list.append(proxy)
 
     if len(proxies_list) < Config.PROCESSES_COUNT:
@@ -74,6 +75,7 @@ def main():
 
                     occupied_proxies[proxies_list.index(new_proxy)] = queue
                     queue.put(new_proxy.model_dump())
+                    time.sleep(2)
 
                     occupied_values = list(occupied_proxies.values())
                     if queue in occupied_values:
@@ -83,7 +85,7 @@ def main():
             except Empty:
                 continue
 
-        time.sleep(1)
+        time.sleep(0.5)
 
 
 if __name__ == "__main__":
