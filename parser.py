@@ -261,6 +261,7 @@ class Parser:
             self.driver.quit()
 
         options = ChromeOptions()
+        options.add_argument('--disable-blink-features=AutomationControlled')
 
         if self.proxy.username:
             ext_path = os.path.abspath(f"proxy_extensions/{self.proxy.formulate_filename()}/")
