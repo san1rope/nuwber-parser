@@ -1,3 +1,4 @@
+import csv
 import logging
 import math
 import time
@@ -54,33 +55,32 @@ def main():
         return
 
     values_per_process = math.ceil(len(in_data) / Config.PROCESSES_COUNT)
-    queues_list = [Queue() for _ in range(Config.PROCESSES_COUNT)]
+    queues_list = [{"main": Queue(), "sub": Queue()} for _ in range(Config.PROCESSES_COUNT)]
     last_index = 0
     for queue in queues_list:
         Process(target=Parser, args=(queue, in_data[last_index:last_index + values_per_process])).start()
         last_index += values_per_process
 
-    occupied_proxies: Dict[int, Queue] = {}
+    last_proxy_index = 0
     while True:
         for queue in queues_list:
             try:
-                msg = queue.get_nowait()
+                msg = queue["main"].get_nowait()
                 if msg["type"] == "get_new_proxy":
-                    new_proxy: Optional[Proxy] = None
-                    while new_proxy is None:
-                        for proxy in proxies_list:
-                            if proxies_list.index(proxy) not in occupied_proxies:
-                                new_proxy = proxy
-                                break
+                    new_proxy: Optional[Proxy] = proxies_list[last_proxy_index]
+                    last_proxy_index += 1
+                    if last_proxy_index + 1 >= len(proxies_list):
+                        last_proxy_index = 0
 
-                    occupied_proxies[proxies_list.index(new_proxy)] = queue
-                    queue.put(new_proxy.model_dump())
-                    time.sleep(2)
+                    queue["sub"].put(new_proxy.model_dump())
 
-                    occupied_values = list(occupied_proxies.values())
-                    if queue in occupied_values:
-                        proxy_index = occupied_values.index(queue)
-                        occupied_proxies.pop(list(occupied_proxies.keys())[proxy_index])
+                elif msg["type"] == "new_data":
+                    data = msg["data"]
+
+                    Config.OUT_DATA_PATH.touch(exist_ok=True)
+                    with open(Config.OUT_DATA_PATH, "a", encoding="utf-8", newline="") as file:
+                        writer = csv.writer(file, delimiter=";")
+                        writer.writerow(data)
 
             except Empty:
                 continue
