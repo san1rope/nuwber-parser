@@ -13,7 +13,6 @@ from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.wait import WebDriverWait
 from undetected_chromedriver import Chrome, ChromeOptions
 
-from config import Config
 from models import Proxy
 
 logger = logging.getLogger(__name__)
@@ -23,6 +22,7 @@ class Parser:
     proxy: Optional[Proxy] = None
     driver: Optional[Chrome] = None
     current_url: Optional[str] = None
+    first_request: Optional[bool] = None
 
     def __init__(self, queue_dict: Dict[str, Queue], in_data: List[str]):
         self.queue_main = queue_dict["main"]
@@ -269,10 +269,6 @@ class Parser:
 
         else:
             options.add_argument(f"--proxy-server=http://{self.proxy.host}:{self.proxy.port}")
-
-        if Config.HEADLESS:
-            options.add_argument("--headless=new")
-            options.add_argument("--no-sandbox")
 
         self.driver = Chrome(options=options)
         self.driver.set_window_size(width=800, height=600)
