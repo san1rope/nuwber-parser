@@ -4,7 +4,7 @@ import math
 import time
 from multiprocessing import Process, Queue
 from queue import Empty
-from typing import Dict, Optional, List
+from typing import Optional, List
 
 from config import Config
 from models import Proxy
@@ -30,7 +30,10 @@ def main():
         logger.info(f"Файл {Config.PROXIES_PATH.name} пуст! Программа завершает свою работу...")
         return
 
-    in_data = content_in_data.split("\n")
+    in_data = []
+    for el in content_in_data.split("\n"):
+        if el:
+            in_data.append(el)
 
     proxies_list: List[Proxy] = []
     for proxy in content_proxies.split("\n"):

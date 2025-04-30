@@ -22,7 +22,7 @@ class Parser:
     proxy: Optional[Proxy] = None
     driver: Optional[Chrome] = None
     current_url: Optional[str] = None
-    make_first_request: Optional[bool] = None
+    current_value: Optional[str] = None
 
     def __init__(self, queue_dict: Dict[str, Queue], in_data: List[str]):
         self.queue_main = queue_dict["main"]
@@ -44,32 +44,38 @@ class Parser:
         self.driver.get(self.current_url)
 
         for value in self.in_data:
-            self.make_request(value=value)
+            print(f"value = {value}")
+            value = value.replace("\t", " ").replace("\n", " ").strip()
+            self.current_value = value
 
-            flag = False
-            while True:
-                try:
-                    owner_block_el = WebDriverWait(self.driver, 7).until((
-                        ec.presence_of_element_located((By.ID, "ownerBlock"))
-                    ))
-                    logger.info("Нашел блок владельцев! Начинаю парсить...")
-                    break
-
-                except TimeoutException:
-                    logger.info("Не удалось найти блок владельцев!")
-                    try:
-                        self.driver.find_element(By.CLASS_NAME, "address-item")
-                        logger.info("Нашел неожиданный блок адресов! Пропускаю....")
-                        flag = True
-                        break
-
-                    except NoSuchElementException:
-                        self.root_cause_search()
-
-            if flag:
+            self.make_request()
+            if "@" in self.current_value:
+                result = self.parse_person()
+                self.queue_main.put({"type": "new_data", "data": result})
                 continue
 
-            owners_els = owner_block_el.find_elements(By.CLASS_NAME, "bordered-tiles-header.js-touch-trigger")
+            flag = False
+            for _ in range(3):
+                if self.find_owners_block():
+                    logger.info("Нашел блок владельцев! Начинаю парсить...")
+                    flag = True
+                    break
+
+                if self.find_unexpected_addresses_block():
+                    logger.info("Нашел неожиданный блок адресов! Пропускаю....")
+                    break
+
+                if (not self.subscribe_msg_is_active()) and self.find_card_block():
+                    logger.info("По адресу нету владельцев! Пропускаю...")
+                    break
+
+                self.root_cause_search()
+
+            if not flag:
+                continue
+
+            owners_els = self.driver.find_element(By.ID, "ownerBlock").find_elements(
+                By.CLASS_NAME, "bordered-tiles-header.js-touch-trigger")
             persons_urls = [el.get_attribute("href") for el in owners_els]
             for pers_url in persons_urls:
                 logger.info(f"Спарсил ссылку на персону: {pers_url}")
@@ -80,96 +86,133 @@ class Parser:
 
         logger.info("Процесс успешно закончил свою работу!")
 
-    def make_request(self, value: str):
+    def find_card_block(self) -> bool:
         try:
-            if self.make_first_request:
-                search_panel_el = self.driver.find_element(By.ID, "search-panel")
-                tabs_els = search_panel_el.find_element(By.CLASS_NAME, "search__tabs").find_elements(By.TAG_NAME, "li")
-                if "@" in value:
-                    for el in tabs_els:
-                        if el.text.strip().lower() == "email":
-                            self.driver.execute_script(
-                                "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
-                            time.sleep(0.5)
-                            el.click()
-                            break
+            self.driver.find_element(By.ID, "cardBlock")
+            return True
 
-                    li_els = self.driver.find_element(By.ID, "search-panel").find_element(
-                        By.CLASS_NAME, "search__blocks").find_elements(By.TAG_NAME, "li")
-                    for el in li_els:
-                        if el.get_attribute("class") == "active":
-                            el.find_element(By.ID, "search-panel_email").send_keys(value)
-                            time.sleep(0.5)
-                            el.find_element(By.TAG_NAME, "button").click()
-                            break
+        except NoSuchElementException:
+            return False
 
-                    result = self.parse_person()
-                    self.queue_main.put({"type": "new_data", "data": result})
+    def find_owners_block(self) -> bool:
+        try:
+            WebDriverWait(self.driver, 5).until((ec.presence_of_element_located((By.ID, "ownerBlock"))))
+            return True
 
-                    self.make_first_request = False
+        except TimeoutException:
+            return False
 
-                else:
-                    for el in tabs_els:
-                        if el.text.strip().lower() == "address":
-                            self.driver.execute_script(
-                                "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
-                            time.sleep(0.5)
-                            el.click()
-                            break
+    def find_unexpected_addresses_block(self) -> bool:
+        try:
+            self.driver.find_element(By.CLASS_NAME, "address-item")
+            return True
 
-                    li_els = self.driver.find_element(By.ID, "search-panel").find_element(
-                        By.CLASS_NAME, "search__blocks").find_elements(By.TAG_NAME, "li")
-                    for el in li_els:
-                        if el.get_attribute("class") == "active":
-                            el.find_element(By.ID, "search-panel_address").send_keys(value)
-                            el.find_element(By.TAG_NAME, "button").click()
-                            break
+        except NoSuchElementException:
+            return False
 
-                    self.make_first_request = False
+    def search_processing(self, main_page: bool):
+        if main_page:
+            search_panel_el = self.driver.find_element(By.ID, "search-panel")
+            tabs_els = search_panel_el.find_element(By.CLASS_NAME, "search__tabs").find_elements(By.TAG_NAME, "li")
+            if "@" in self.current_value:
+                for el in tabs_els:
+                    if el.text.strip().lower() == "email":
+                        self.driver.execute_script(
+                            "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
+                        time.sleep(0.5)
+                        el.click()
+                        break
+
+                li_els = self.driver.find_element(By.ID, "search-panel").find_element(
+                    By.CLASS_NAME, "search__blocks").find_elements(By.TAG_NAME, "li")
+                for el in li_els:
+                    if el.get_attribute("class") == "active":
+                        el.find_element(By.ID, "search-panel_email").send_keys(self.current_value)
+                        time.sleep(0.5)
+                        el.find_element(By.TAG_NAME, "button").click()
+                        break
 
             else:
-                header_search_el = self.driver.find_element(By.CLASS_NAME, "header-search-content")
-                tabs_els = header_search_el.find_element(By.CLASS_NAME, "search__tabs").find_elements(By.TAG_NAME, "li")
-                if "@" in value:
-                    for el in tabs_els:
-                        if el.text.strip().lower() == "email":
-                            self.driver.execute_script(
-                                "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
-                            time.sleep(0.5)
-                            el.click()
-                            break
+                for el in tabs_els:
+                    if el.text.strip().lower() == "address":
+                        self.driver.execute_script(
+                            "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
+                        time.sleep(0.5)
+                        el.click()
+                        break
 
-                    li_els = self.driver.find_element(By.CLASS_NAME, "header-search-content").find_element(
-                        By.CLASS_NAME, "search__blocks").find_elements(By.TAG_NAME, "li")
-                    for el in li_els:
-                        if el.get_attribute("class") == "active":
-                            el.find_element(By.TAG_NAME, "input").send_keys(value)
-                            el.find_element(By.TAG_NAME, "button").click()
+                li_els = self.driver.find_element(By.ID, "search-panel").find_element(
+                    By.CLASS_NAME, "search__blocks").find_elements(By.TAG_NAME, "li")
+                for el in li_els:
+                    if el.get_attribute("class") == "active":
+                        el.find_element(By.ID, "search-panel_address").send_keys(self.current_value)
+                        el.find_element(By.TAG_NAME, "button").click()
+                        break
 
-                    result = self.parse_person()
-                    self.queue_main.put({"type": "new_data", "data": result})
+        else:
+            header_search_el = self.driver.find_element(By.CLASS_NAME, "header-search-content")
+            tabs_els = header_search_el.find_element(By.CLASS_NAME, "search__tabs").find_elements(By.TAG_NAME, "li")
+            if "@" in self.current_value:
+                for el in tabs_els:
+                    if el.text.strip().lower() == "email":
+                        self.driver.execute_script(
+                            "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
+                        time.sleep(0.5)
+                        el.click()
+                        break
 
-                else:
-                    for el in tabs_els:
-                        if el.text.strip().lower() == "address":
-                            self.driver.execute_script(
-                                "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
-                            time.sleep(0.5)
-                            el.click()
-                            break
+                li_els = self.driver.find_element(By.CLASS_NAME, "header-search-content").find_element(
+                    By.CLASS_NAME, "search__blocks").find_elements(By.TAG_NAME, "li")
+                for el in li_els:
+                    if el.get_attribute("class") == "active":
+                        el.find_element(By.TAG_NAME, "input").send_keys(self.current_value)
+                        el.find_element(By.TAG_NAME, "button").click()
 
-                    li_els = self.driver.find_element(By.CLASS_NAME, "header-search-content").find_element(
-                        By.CLASS_NAME, "search__blocks").find_elements(By.TAG_NAME, "li")
-                    for el in li_els:
-                        if el.get_attribute("class") == "active":
-                            el.find_element(By.TAG_NAME, "input").clear()
-                            el.find_element(By.TAG_NAME, "input").send_keys(value)
-                            el.find_element(By.TAG_NAME, "button").click()
-                            break
+            else:
+                for el in tabs_els:
+                    if el.text.strip().lower() == "address":
+                        self.driver.execute_script(
+                            "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
+                        time.sleep(0.5)
+                        el.click()
+                        break
+
+                li_els = self.driver.find_element(By.CLASS_NAME, "header-search-content").find_element(
+                    By.CLASS_NAME, "search__blocks").find_elements(By.TAG_NAME, "li")
+                for el in li_els:
+                    if el.get_attribute("class") == "active":
+                        el.find_element(By.TAG_NAME, "input").clear()
+                        el.find_element(By.TAG_NAME, "input").send_keys(self.current_value)
+                        el.find_element(By.TAG_NAME, "button").click()
+                        break
+
+    def make_request(self):
+        main_page = None
+        try:
+            self.driver.find_element(By.ID, "search-panel")
+            main_page = True
+
+        except NoSuchElementException:
+            pass
+
+        if main_page is None:
+            try:
+                self.driver.find_element(By.CLASS_NAME, "header-search-content")
+                main_page = False
+
+            except NoSuchElementException:
+                pass
+
+        if main_page is None:
+            self.root_cause_search()
+            return self.make_request()
+
+        try:
+            self.search_processing(main_page=main_page)
 
         except NoSuchElementException:
             self.root_cause_search()
-            self.make_request(value=value)
+            return self.make_request()
 
     def parse_person(self, retries: int = 3) -> List[str]:
         try:
@@ -184,6 +227,9 @@ class Parser:
                 return []
 
             self.root_cause_search()
+            if "@" in self.current_value:
+                self.make_request()
+
             return self.parse_person(retries=retries - 1)
 
         try:
@@ -275,6 +321,7 @@ class Parser:
                 self.get_new_webdriver()
 
             self.driver.get(self.current_url)
+
             self.root_cause_search()
             return
 
@@ -343,6 +390,9 @@ class Parser:
 
         options = ChromeOptions()
         options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-renderer-backgrounding")
 
         if self.proxy.username:
             ext_path = os.path.abspath(f"proxy_extensions/{self.proxy.formulate_filename()}/")
@@ -353,8 +403,17 @@ class Parser:
 
         self.driver = Chrome(options=options)
         self.driver.set_window_size(width=1100, height=600)
+        self.driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {
+                "source": """
+                    Object.defineProperty(document, 'hidden', {value: false});
+                    Object.defineProperty(document, 'visibilityState', {value: 'visible'});
+                    document.addEventListener('visibilitychange', (e) => { e.stopImmediatePropagation(); }, true);
+                """
+            }
+        )
 
-        self.make_first_request = True
         logger.info("Создал новый WebDriver!")
 
     def get_new_proxy(self):
