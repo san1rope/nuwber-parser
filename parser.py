@@ -22,7 +22,7 @@ class Parser:
     proxy: Optional[Proxy] = None
     driver: Optional[Chrome] = None
     current_url: Optional[str] = None
-    first_request: Optional[bool] = None
+    make_first_request: Optional[bool] = None
 
     def __init__(self, queue_dict: Dict[str, Queue], in_data: List[str]):
         self.queue_main = queue_dict["main"]
@@ -40,19 +40,11 @@ class Parser:
         self.get_new_proxy()
         self.get_new_webdriver()
 
+        self.current_url = "https://nuwber.com/"
+        self.driver.get(self.current_url)
+
         for value in self.in_data:
-            if "@" in value:
-                url = f"https://nuwber.com/search/email?email={value.strip()}"
-                result = self.parse_person(url=url)
-                self.queue_main.put({"type": "new_data", "data": result})
-                continue
-
-            else:
-                url = "https://nuwber.com/search/address?addressQuery=" + "%20".join(value.split())
-
-            self.current_url = url
-            self.driver.get(url)
-            logger.info(f"Сделал запрос к {url}")
+            self.make_request(value=value)
 
             flag = False
             while True:
@@ -81,16 +73,105 @@ class Parser:
             persons_urls = [el.get_attribute("href") for el in owners_els]
             for pers_url in persons_urls:
                 logger.info(f"Спарсил ссылку на персону: {pers_url}")
-                result = self.parse_person(url=pers_url)
+                self.driver.get(pers_url)
+                self.current_url = pers_url
+                result = self.parse_person()
                 self.queue_main.put({"type": "new_data", "data": result})
 
         logger.info("Процесс успешно закончил свою работу!")
 
-    def parse_person(self, url: str, retries: int = 3) -> List[str]:
-        self.current_url = url
-        self.driver.get(url)
-        logger.info(f"Сделал запрос к {url}")
+    def make_request(self, value: str):
+        try:
+            if self.make_first_request:
+                search_panel_el = self.driver.find_element(By.ID, "search-panel")
+                tabs_els = search_panel_el.find_element(By.CLASS_NAME, "search__tabs").find_elements(By.TAG_NAME, "li")
+                if "@" in value:
+                    for el in tabs_els:
+                        if el.text.strip().lower() == "email":
+                            self.driver.execute_script(
+                                "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
+                            time.sleep(0.5)
+                            el.click()
+                            break
 
+                    li_els = self.driver.find_element(By.ID, "search-panel").find_element(
+                        By.CLASS_NAME, "search__blocks").find_elements(By.TAG_NAME, "li")
+                    for el in li_els:
+                        if el.get_attribute("class") == "active":
+                            el.find_element(By.ID, "search-panel_email").send_keys(value)
+                            time.sleep(0.5)
+                            el.find_element(By.TAG_NAME, "button").click()
+                            break
+
+                    result = self.parse_person()
+                    self.queue_main.put({"type": "new_data", "data": result})
+
+                    self.make_first_request = False
+
+                else:
+                    for el in tabs_els:
+                        if el.text.strip().lower() == "address":
+                            self.driver.execute_script(
+                                "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
+                            time.sleep(0.5)
+                            el.click()
+                            break
+
+                    li_els = self.driver.find_element(By.ID, "search-panel").find_element(
+                        By.CLASS_NAME, "search__blocks").find_elements(By.TAG_NAME, "li")
+                    for el in li_els:
+                        if el.get_attribute("class") == "active":
+                            el.find_element(By.ID, "search-panel_address").send_keys(value)
+                            el.find_element(By.TAG_NAME, "button").click()
+                            break
+
+                    self.make_first_request = False
+
+            else:
+                header_search_el = self.driver.find_element(By.CLASS_NAME, "header-search-content")
+                tabs_els = header_search_el.find_element(By.CLASS_NAME, "search__tabs").find_elements(By.TAG_NAME, "li")
+                if "@" in value:
+                    for el in tabs_els:
+                        if el.text.strip().lower() == "email":
+                            self.driver.execute_script(
+                                "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
+                            time.sleep(0.5)
+                            el.click()
+                            break
+
+                    li_els = self.driver.find_element(By.CLASS_NAME, "header-search-content").find_element(
+                        By.CLASS_NAME, "search__blocks").find_elements(By.TAG_NAME, "li")
+                    for el in li_els:
+                        if el.get_attribute("class") == "active":
+                            el.find_element(By.TAG_NAME, "input").send_keys(value)
+                            el.find_element(By.TAG_NAME, "button").click()
+
+                    result = self.parse_person()
+                    self.queue_main.put({"type": "new_data", "data": result})
+
+                else:
+                    for el in tabs_els:
+                        if el.text.strip().lower() == "address":
+                            self.driver.execute_script(
+                                "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
+                            time.sleep(0.5)
+                            el.click()
+                            break
+
+                    li_els = self.driver.find_element(By.CLASS_NAME, "header-search-content").find_element(
+                        By.CLASS_NAME, "search__blocks").find_elements(By.TAG_NAME, "li")
+                    for el in li_els:
+                        if el.get_attribute("class") == "active":
+                            el.find_element(By.TAG_NAME, "input").clear()
+                            el.find_element(By.TAG_NAME, "input").send_keys(value)
+                            el.find_element(By.TAG_NAME, "button").click()
+                            break
+
+        except NoSuchElementException:
+            self.root_cause_search()
+            self.make_request(value=value)
+
+    def parse_person(self, retries: int = 3) -> List[str]:
         try:
             fullname = WebDriverWait(
                 self.driver, 5).until(ec.presence_of_element_located((By.XPATH, '//b[@itemprop="name"]'))).text
@@ -99,11 +180,11 @@ class Parser:
             logger.info("Не удалось получить имя")
 
             if retries <= 0:
-                logger.error(f"Не удалось спарсить - {url}. Пропускаю ссылку...")
+                logger.error(f"Не удалось спарсить - . Пропускаю ссылку...")
                 return []
 
             self.root_cause_search()
-            return self.parse_person(url=url, retries=retries - 1)
+            return self.parse_person(retries=retries - 1)
 
         try:
             birth_date = WebDriverWait(self.driver, 1).until(
@@ -229,7 +310,7 @@ class Parser:
     def captcha_is_active(self) -> bool:
         logger.info("Проверяю наличие капчи...")
         try:
-            self.driver.find_element(By.ID, "ppIS7")
+            self.driver.find_element(By.ID, "qOTkU1")
             logger.info("Капча на странице!")
             return True
 
@@ -238,7 +319,7 @@ class Parser:
             return False
 
     def pass_captcha(self):
-        x, y = 265, 100
+        x, y = 415, 120
 
         actions = ActionChains(self.driver)
         actions.move_by_offset(5, 5).perform()
@@ -271,8 +352,9 @@ class Parser:
             options.add_argument(f"--proxy-server=http://{self.proxy.host}:{self.proxy.port}")
 
         self.driver = Chrome(options=options)
-        self.driver.set_window_size(width=800, height=600)
+        self.driver.set_window_size(width=1100, height=600)
 
+        self.make_first_request = True
         logger.info("Создал новый WebDriver!")
 
     def get_new_proxy(self):
