@@ -11,4 +11,4 @@ class Config:
     PROXIES_PATH = Path(os.path.abspath("proxies.txt"))
     OUT_DATA_PATH = Path(os.path.abspath("out_data.csv"))
     PROCESSES_COUNT = int(os.getenv("PROCESSES_COUNT").strip())
-    HEADLESS = bool(int(os.getenv("HEADLESS").strip()))
+    REQUEST_TO_CHANGE_ADDRESS_TIMEOUT = int(os.getenv("REQUEST_TO_CHANGE_ADDRESS_TIMEOUT").strip())

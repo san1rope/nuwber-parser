@@ -1,1 +1,1 @@
-valetinles:f5bay87SBb:138.36.94.19:59100
+proxy666:proxy666:5.161.22.114:14706|https://gridpanel.net/api/reboot?token=MzY4MzIsN2M4NDY5ZjUtYzc5YS00YmY1LWE0MDQtZjQ2NjJlZDA4YzE0

@@ -1,11 +1,13 @@
+import json
 import logging
 import os
-import time
+from time import time, sleep
 from copy import deepcopy
 from multiprocessing import Queue
 from queue import Empty
 from typing import List, Optional, Dict
 
+import requests
 from selenium.common import TimeoutException, NoSuchElementException
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
@@ -13,6 +15,7 @@ from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.wait import WebDriverWait
 from undetected_chromedriver import Chrome, ChromeOptions
 
+from config import Config
 from models import Proxy
 
 logger = logging.getLogger(__name__)
@@ -23,6 +26,7 @@ class Parser:
     driver: Optional[Chrome] = None
     current_url: Optional[str] = None
     current_value: Optional[str] = None
+    time_to_change_address: Optional[float] = None
 
     def __init__(self, queue_dict: Dict[str, Queue], in_data: List[str]):
         self.queue_main = queue_dict["main"]
@@ -44,7 +48,8 @@ class Parser:
         self.driver.get(self.current_url)
 
         for value in self.in_data:
-            print(f"value = {value}")
+            self.check_timeout_for_change_address()
+
             value = value.replace("\t", " ").replace("\n", " ").strip()
             self.current_value = value
 
@@ -119,7 +124,7 @@ class Parser:
                     if el.text.strip().lower() == "email":
                         self.driver.execute_script(
                             "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
-                        time.sleep(0.5)
+                        sleep(0.5)
                         el.click()
                         break
 
@@ -128,7 +133,7 @@ class Parser:
                 for el in li_els:
                     if el.get_attribute("class") == "active":
                         el.find_element(By.ID, "search-panel_email").send_keys(self.current_value)
-                        time.sleep(0.5)
+                        sleep(0.5)
                         el.find_element(By.TAG_NAME, "button").click()
                         break
 
@@ -137,7 +142,7 @@ class Parser:
                     if el.text.strip().lower() == "address":
                         self.driver.execute_script(
                             "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
-                        time.sleep(0.5)
+                        sleep(0.5)
                         el.click()
                         break
 
@@ -157,7 +162,7 @@ class Parser:
                     if el.text.strip().lower() == "email":
                         self.driver.execute_script(
                             "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
-                        time.sleep(0.5)
+                        sleep(0.5)
                         el.click()
                         break
 
@@ -173,7 +178,7 @@ class Parser:
                     if el.text.strip().lower() == "address":
                         self.driver.execute_script(
                             "arguments[0].scrollIntoView({ behavior: 'smooth', block: 'center' });", el)
-                        time.sleep(0.5)
+                        sleep(0.5)
                         el.click()
                         break
 
@@ -257,7 +262,7 @@ class Parser:
             house_info_els = WebDriverWait(self.driver, 1).until(
                 ec.presence_of_element_located((By.ID, "propertyBlock"))).find_elements(
                 By.CLASS_NAME, "person-item-text")
-            house_info = " | ".join([el.text for el in house_info_els])
+            house_info = "\n".join([el.text for el in house_info_els])
 
         except TimeoutException:
             house_info = ""
@@ -272,7 +277,7 @@ class Parser:
                 last_seen = el.find_element(By.CLASS_NAME, "person-item-additional").text.replace("Seen", "").strip()
                 landlines_info.append(f"{number}; {last_seen}")
 
-            landlines_info = " | ".join(landlines_info)
+            landlines_info = "\n".join(landlines_info)
 
         except TimeoutException:
             landlines_info = ""
@@ -287,7 +292,7 @@ class Parser:
                 last_seen = el.find_element(By.CLASS_NAME, "person-item-additional").text.replace("Seen", "").strip()
                 cell_phones_info.append(f"{number}; {last_seen}")
 
-            cell_phones_info = " | ".join(cell_phones_info)
+            cell_phones_info = "\n".join(cell_phones_info)
 
         except TimeoutException:
             cell_phones_info = ""
@@ -295,7 +300,7 @@ class Parser:
         try:
             emails_els = WebDriverWait(self.driver, 1).until(
                 ec.presence_of_element_located((By.ID, "emailsBlock"))).find_elements(By.CLASS_NAME, "person-item")
-            emails = " | ".join([el.text.strip() for el in emails_els])
+            emails = "\n".join([el.text.strip() for el in emails_els])
 
         except TimeoutException:
             emails = ""
@@ -315,7 +320,7 @@ class Parser:
             old_proxy = deepcopy(self.proxy)
             self.get_new_proxy()
             if self.proxy.host == old_proxy.host and self.proxy.port == old_proxy.port:
-                time.sleep(70)
+                sleep(70)
 
             else:
                 self.get_new_webdriver()
@@ -357,7 +362,7 @@ class Parser:
     def captcha_is_active(self) -> bool:
         logger.info("Проверяю наличие капчи...")
         try:
-            self.driver.find_element(By.ID, "qOTkU1")
+            self.driver.find_element(By.CLASS_NAME, "loading-verifying")
             logger.info("Капча на странице!")
             return True
 
@@ -370,15 +375,15 @@ class Parser:
 
         actions = ActionChains(self.driver)
         actions.move_by_offset(5, 5).perform()
-        time.sleep(0.2)
+        sleep(0.2)
         actions.move_by_offset(10, -3).perform()
-        time.sleep(0.3)
+        sleep(0.3)
         actions.move_by_offset(20, 4).perform()
-        time.sleep(0.3)
+        sleep(0.3)
         actions.move_by_offset(x, y).click().perform()
         actions.move_by_offset(-x - 35, -y - 6).perform()
 
-        time.sleep(10)
+        sleep(10)
         logger.info("Выполнил действия для решения капчи!")
 
         if self.captcha_is_active():
@@ -414,6 +419,7 @@ class Parser:
             }
         )
 
+        self.time_to_change_address = time()
         logger.info("Создал новый WebDriver!")
 
     def get_new_proxy(self):
@@ -429,3 +435,22 @@ class Parser:
                 continue
 
         logger.info("Получил прокси!")
+
+    def check_timeout_for_change_address(self):
+        if self.proxy.change_address_url is None:
+            return
+
+        logger.info("Проверяю время для смены адреса...")
+        if time() - self.time_to_change_address >= Config.REQUEST_TO_CHANGE_ADDRESS_TIMEOUT:
+            logger.info("Делаю запрос к апи прокси...")
+            answer_raw = requests.get(url=self.proxy.change_address_url)
+            answer_json = json.loads(answer_raw.text)
+            if answer_json.get("success"):
+                logger.info("Адрес был успешно сменен!")
+                self.time_to_change_address = time()
+
+            else:
+                logger.info("Не удалось сменить адрес!")
+
+        else:
+            logger.info(f"Время смены адреса ещё не настало! Текущий timestamp: {self.time_to_change_address}")

@@ -10,6 +10,7 @@ class Proxy(BaseModel):
     port: str
     username: Optional[str] = None
     password: Optional[str] = None
+    change_address_url: Optional[str] = None
 
     def formulate_filename(self) -> str:
         name = f"{self.host}_{self.port}"

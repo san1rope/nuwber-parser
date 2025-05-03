@@ -6,8 +6,8 @@
                     rules: {
                       singleProxy: {
                         scheme: "http",
-                        host: "138.36.94.19",
-                        port: parseInt(59107)
+                        host: "5.161.22.114",
+                        port: parseInt(14706)
                       },
                       bypassList: ["localhost"]
                     }
@@ -22,8 +22,8 @@
               function(details, callback) {
                 callback({
                   authCredentials: {
-                    username: "valetinles",
-                    password: "f5bay87SBb"
+                    username: "proxy666",
+                    password: "proxy666"
                   }
                 });
               },

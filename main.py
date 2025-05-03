@@ -4,7 +4,7 @@ import math
 import time
 from multiprocessing import Process, Queue
 from queue import Empty
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from config import Config
 from models import Proxy
@@ -37,6 +37,10 @@ def main():
 
     proxies_list: List[Proxy] = []
     for proxy in content_proxies.split("\n"):
+        change_address_url = None
+        if "|" in proxy:
+            proxy, change_address_url = proxy.split("|")
+
         char_count = proxy.count(":")
         if char_count not in [1, 3]:
             logger.warning(f"Неверный формат прокси: {proxy}! Пропускаю его.")
@@ -49,7 +53,7 @@ def main():
         else:
             login, password, host, port = proxy.split(":")
 
-        proxy = Proxy(host=host, port=port, username=login, password=password)
+        proxy = Proxy(host=host, port=port, username=login, password=password, change_address_url=change_address_url)
         proxy.create_proxy_extension()
         proxies_list.append(proxy)
 
@@ -82,7 +86,7 @@ def main():
 
                     Config.OUT_DATA_PATH.touch(exist_ok=True)
                     with open(Config.OUT_DATA_PATH, "a", encoding="utf-8", newline="") as file:
-                        writer = csv.writer(file, delimiter=";")
+                        writer = csv.writer(file, delimiter="|")
                         writer.writerow(data)
 
             except Empty:
