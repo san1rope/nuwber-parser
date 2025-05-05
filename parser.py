@@ -45,7 +45,7 @@ class Parser:
         self.get_new_webdriver()
 
         self.current_url = "https://nuwber.com/"
-        self.driver.get(self.current_url)
+        self.get_request_to_url()
 
         for value in self.in_data:
             self.check_timeout_for_change_address()
@@ -84,12 +84,28 @@ class Parser:
             persons_urls = [el.get_attribute("href") for el in owners_els]
             for pers_url in persons_urls:
                 logger.info(f"Спарсил ссылку на персону: {pers_url}")
-                self.driver.get(pers_url)
+                self.get_request_to_url()
                 self.current_url = pers_url
                 result = self.parse_person()
                 self.queue_main.put({"type": "new_data", "data": result})
 
         logger.info("Процесс успешно закончил свою работу!")
+
+    def get_request_to_url(self, retries: int = 5):
+        try:
+            self.driver.get(self.current_url)
+
+        except Exception as ex:
+            logger.info(f"Не удалось сделать запрос! Осталось попыток: {retries} | {ex}")
+            sleep(5)
+
+            if retries <= 0:
+                logger.info("Инициализирую новый webdriver...")
+                self.get_new_webdriver()
+                self.get_request_to_url(retries=5)
+
+            else:
+                self.get_request_to_url(retries=retries - 1)
 
     def find_card_block(self) -> bool:
         try:
@@ -317,18 +333,38 @@ class Parser:
             return
 
         if self.many_requests_msg_is_active():
+            if self.proxy.change_address_url and self.request_to_change_address():
+                self.get_request_to_url()
+                return
+
             old_proxy = deepcopy(self.proxy)
             self.get_new_proxy()
             if self.proxy.host == old_proxy.host and self.proxy.port == old_proxy.port:
-                sleep(70)
+                sleep(45)
 
             else:
                 self.get_new_webdriver()
 
-            self.driver.get(self.current_url)
-
+            self.get_request_to_url()
             self.root_cause_search()
             return
+
+            # if self.proxy.change_address_url:
+            #     self.check_timeout_for_change_address()
+            #
+            # else:
+            #     old_proxy = deepcopy(self.proxy)
+            #     self.get_new_proxy()
+            #     if self.proxy.host == old_proxy.host and self.proxy.port == old_proxy.port:
+            #         sleep(45)
+            #
+            #     else:
+            #         self.get_new_webdriver()
+            #
+            #     self.get_request_to_url()
+            #
+            #     self.root_cause_search()
+            #     return
 
     def many_requests_msg_is_active(self) -> bool:
         logger.info("Проверяю состояния сообщения о черезмерном количестве запросов...")
@@ -442,15 +478,20 @@ class Parser:
 
         logger.info("Проверяю время для смены адреса...")
         if time() - self.time_to_change_address >= Config.REQUEST_TO_CHANGE_ADDRESS_TIMEOUT:
-            logger.info("Делаю запрос к апи прокси...")
-            answer_raw = requests.get(url=self.proxy.change_address_url)
-            answer_json = json.loads(answer_raw.text)
-            if answer_json.get("success"):
-                logger.info("Адрес был успешно сменен!")
-                self.time_to_change_address = time()
-
-            else:
-                logger.info("Не удалось сменить адрес!")
+            self.request_to_change_address()
 
         else:
             logger.info(f"Время смены адреса ещё не настало! Текущий timestamp: {self.time_to_change_address}")
+
+    def request_to_change_address(self) -> bool:
+        logger.info("Делаю запрос к апи прокси...")
+        answer_raw = requests.get(url=self.proxy.change_address_url)
+        answer_json = json.loads(answer_raw.text)
+        if answer_json.get("success"):
+            logger.info("Адрес был успешно сменен!")
+            self.time_to_change_address = time()
+            return True
+
+        else:
+            logger.info("Не удалось сменить адрес!")
+            return False
