@@ -4,7 +4,7 @@ import math
 import time
 from multiprocessing import Process, Queue
 from queue import Empty
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 from config import Config
 from models import Proxy
@@ -24,15 +24,24 @@ def main():
         logger.info(f"Файл {Config.IN_DATA_PATH.name} пуст! Программа завершает свою работу...")
         return
 
+    Config.PARSED_DATA_PATH.touch(exist_ok=True)
+    content_parsed_data = Config.PARSED_DATA_PATH.read_text(encoding="utf-8")
+    if (not content_parsed_data) or (not content_parsed_data.strip()):
+        logger.info(f"Файл {Config.PARSED_DATA_PATH.name} пуст! Программа завершает свою работу...")
+        return
+
     Config.PROXIES_PATH.touch(exist_ok=True)
     content_proxies = Config.PROXIES_PATH.read_text(encoding="utf-8")
     if (not content_proxies) or (not content_proxies.strip()):
         logger.info(f"Файл {Config.PROXIES_PATH.name} пуст! Программа завершает свою работу...")
         return
 
+    parsed_data = content_parsed_data.strip().split("\n")
+
     in_data = []
     for el in content_in_data.split("\n"):
-        if el:
+        el = el.strip()
+        if el and el not in parsed_data:
             in_data.append(el)
 
     proxies_list: List[Proxy] = []
@@ -73,6 +82,7 @@ def main():
         for queue in queues_list:
             try:
                 msg = queue["main"].get_nowait()
+                print(f"msg = {msg}")
                 if msg["type"] == "get_new_proxy":
                     new_proxy: Optional[Proxy] = proxies_list[last_proxy_index]
                     last_proxy_index += 1
@@ -88,6 +98,13 @@ def main():
                     with open(Config.OUT_DATA_PATH, "a", encoding="utf-8", newline="") as file:
                         writer = csv.writer(file, delimiter="|")
                         writer.writerow(data)
+
+                elif msg["type"] == "parsed_value":
+                    value = msg["value"]
+                    print(f"PARSED_DATA = {value}")
+
+                    with open(Config.PARSED_DATA_PATH, "a", encoding="utf-8") as file:
+                        file.write(value + "\n")
 
             except Empty:
                 continue

@@ -48,6 +48,7 @@ class Parser:
         self.get_request_to_url()
 
         for value in self.in_data:
+            print(f"value = {value}")
             self.check_timeout_for_change_address()
 
             value = value.replace("\t", " ").replace("\n", " ").strip()
@@ -57,6 +58,8 @@ class Parser:
             if "@" in self.current_value:
                 result = self.parse_person()
                 self.queue_main.put({"type": "new_data", "data": result})
+                self.queue_main.put({"type": "parsed_value", "value": value})
+                print("SENDED EMAIL")
                 continue
 
             flag = False
@@ -84,10 +87,13 @@ class Parser:
             persons_urls = [el.get_attribute("href") for el in owners_els]
             for pers_url in persons_urls:
                 logger.info(f"Спарсил ссылку на персону: {pers_url}")
-                self.get_request_to_url()
                 self.current_url = pers_url
+                self.get_request_to_url()
                 result = self.parse_person()
                 self.queue_main.put({"type": "new_data", "data": result})
+
+            self.queue_main.put({"type": "parsed_value", "value": value})
+            print("SENDED ADDRESS")
 
         logger.info("Процесс успешно закончил свою работу!")
 
@@ -240,7 +246,7 @@ class Parser:
             fullname = WebDriverWait(
                 self.driver, 5).until(ec.presence_of_element_located((By.XPATH, '//b[@itemprop="name"]'))).text
 
-        except TimeoutException:
+        except Exception:
             logger.info("Не удалось получить имя")
 
             if retries <= 0:
@@ -335,6 +341,7 @@ class Parser:
         if self.many_requests_msg_is_active():
             if self.proxy.change_address_url and self.request_to_change_address():
                 self.get_request_to_url()
+                sleep(10)
                 return
 
             old_proxy = deepcopy(self.proxy)
@@ -349,32 +356,13 @@ class Parser:
             self.root_cause_search()
             return
 
-            # if self.proxy.change_address_url:
-            #     self.check_timeout_for_change_address()
-            #
-            # else:
-            #     old_proxy = deepcopy(self.proxy)
-            #     self.get_new_proxy()
-            #     if self.proxy.host == old_proxy.host and self.proxy.port == old_proxy.port:
-            #         sleep(45)
-            #
-            #     else:
-            #         self.get_new_webdriver()
-            #
-            #     self.get_request_to_url()
-            #
-            #     self.root_cause_search()
-            #     return
-
     def many_requests_msg_is_active(self) -> bool:
-        logger.info("Проверяю состояния сообщения о черезмерном количестве запросов...")
         try:
             self.driver.find_element(By.CLASS_NAME, "troubleshooting")
             logger.info("Сообщение о запросах на странице!")
             return True
 
         except NoSuchElementException:
-            logger.info("Сообщение о запросах нету!")
             return False
 
     def reset_subscribe(self):
@@ -385,25 +373,21 @@ class Parser:
             self.pass_captcha()
 
     def subscribe_msg_is_active(self) -> bool:
-        logger.info("Проверяю состояние сообщения о подписке...")
         try:
             self.driver.find_element(By.CLASS_NAME, "lookup-outer")
             logger.info("Бесплатная подписка закончилась!")
             return True
 
         except NoSuchElementException:
-            logger.info("Бесплатная подписка ещё активна!")
             return False
 
     def captcha_is_active(self) -> bool:
-        logger.info("Проверяю наличие капчи...")
         try:
             self.driver.find_element(By.CLASS_NAME, "loading-verifying")
             logger.info("Капча на странице!")
             return True
 
         except NoSuchElementException:
-            logger.info("Капчи нету на странице!")
             return False
 
     def pass_captcha(self):
@@ -476,7 +460,6 @@ class Parser:
         if self.proxy.change_address_url is None:
             return
 
-        logger.info("Проверяю время для смены адреса...")
         if time() - self.time_to_change_address >= Config.REQUEST_TO_CHANGE_ADDRESS_TIMEOUT:
             self.request_to_change_address()
 
@@ -484,7 +467,6 @@ class Parser:
             logger.info(f"Время смены адреса ещё не настало! Текущий timestamp: {self.time_to_change_address}")
 
     def request_to_change_address(self) -> bool:
-        logger.info("Делаю запрос к апи прокси...")
         answer_raw = requests.get(url=self.proxy.change_address_url)
         answer_json = json.loads(answer_raw.text)
         if answer_json.get("success"):
