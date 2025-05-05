@@ -48,7 +48,6 @@ class Parser:
         self.get_request_to_url()
 
         for value in self.in_data:
-            print(f"value = {value}")
             self.check_timeout_for_change_address()
 
             value = value.replace("\t", " ").replace("\n", " ").strip()
@@ -59,7 +58,6 @@ class Parser:
                 result = self.parse_person()
                 self.queue_main.put({"type": "new_data", "data": result})
                 self.queue_main.put({"type": "parsed_value", "value": value})
-                print("SENDED EMAIL")
                 continue
 
             flag = False
@@ -93,7 +91,6 @@ class Parser:
                 self.queue_main.put({"type": "new_data", "data": result})
 
             self.queue_main.put({"type": "parsed_value", "value": value})
-            print("SENDED ADDRESS")
 
         logger.info("Процесс успешно закончил свою работу!")
 
