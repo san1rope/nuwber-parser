@@ -27,6 +27,7 @@ class Parser:
     current_url: Optional[str] = None
     current_value: Optional[str] = None
     time_to_change_address: Optional[float] = None
+    counter_to_new_webdriver: int = 0
 
     def __init__(self, queue_dict: Dict[str, Queue], in_data: List[str]):
         self.queue_main = queue_dict["main"]
@@ -96,6 +97,11 @@ class Parser:
 
     def get_request_to_url(self, retries: int = 5):
         try:
+            if self.counter_to_new_webdriver > 50:
+                self.get_new_webdriver()
+
+            self.counter_to_new_webdriver += 1
+
             self.driver.get(self.current_url)
 
         except Exception as ex:
@@ -362,12 +368,19 @@ class Parser:
         except NoSuchElementException:
             return False
 
-    def reset_subscribe(self):
-        self.driver.delete_all_cookies()
-        self.driver.refresh()
+    def reset_subscribe(self, retries: int = 3) -> bool:
+        try:
+            self.driver.delete_all_cookies()
+            self.driver.refresh()
 
-        if self.captcha_is_active():
-            self.pass_captcha()
+            if self.captcha_is_active():
+                self.pass_captcha()
+
+        except Exception:
+            if retries <= 0:
+                return False
+
+            return self.reset_subscribe(retries=retries - 1)
 
     def subscribe_msg_is_active(self) -> bool:
         try:
@@ -388,20 +401,26 @@ class Parser:
             return False
 
     def pass_captcha(self):
+        logger.info("КАПЧА")
+
         x, y = 415, 120
 
         actions = ActionChains(self.driver)
-        actions.move_by_offset(5, 5).perform()
-        sleep(0.2)
-        actions.move_by_offset(10, -3).perform()
-        sleep(0.3)
-        actions.move_by_offset(20, 4).perform()
-        sleep(0.3)
-        actions.move_by_offset(x, y).click().perform()
-        actions.move_by_offset(-x - 35, -y - 6).perform()
 
-        sleep(10)
+        for _ in range(4):
+            actions.move_by_offset(5, 5).perform()
+            sleep(0.2)
+            actions.move_by_offset(10, -3).perform()
+            sleep(0.3)
+            actions.move_by_offset(20, 4).perform()
+            sleep(0.3)
+            actions.move_by_offset(x, y).click().perform()
+            actions.move_by_offset(-x - 35, -y - 6).perform()
+
+            sleep(4)
+
         logger.info("Выполнил действия для решения капчи!")
+        sleep(5)
 
         if self.captcha_is_active():
             self.pass_captcha()
